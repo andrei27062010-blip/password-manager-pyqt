@@ -1,0 +1,1 @@
+# andrei27062010-blip-password-manager-pyqt
