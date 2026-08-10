@@ -1,0 +1,21 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+lib/
+# logs
+*.log
+*.err
+
+# Databases
+*.db
+*.sqlite3
+
+# IDEs
+.idea/
+.vscode/
+
+master_config.json
