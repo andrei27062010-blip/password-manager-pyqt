@@ -1,5 +1,5 @@
 import sys
-from PySide6.QtWidgets import (
+from PyQt6.QtWidgets import (
     QApplication,
     QWidget,
     QMainWindow,
@@ -14,22 +14,21 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QTableWidgetItem,
 )
-from PySide6.QtCore import Signal, Qt
-from PySide6.QtGui import QClipboard
+from PyQt6.QtCore import pyqtSignal, Qt
+from PyQt6.QtGui import QClipboard
 
 from ui.login_window import Ui_Form as Ui_LoginWindowBase
 from ui.main_window import Ui_MainWindow as Ui_MainWindowBase
-
+from theme import WhiteNightsTheme 
 from database import DatabaseManager
 from crypto import CryptoService
 import os
 import json
 import base64
 
-MASTER_CONFIG_FILE = "master_config.json"  # Файл для хранения хеша мастер-пароля и соли
+MASTER_CONFIG_FILE = "master_config.json"
 
 
-# --- Вспомогательная функция для работы с файлом конфигурации мастер-пароля ---
 def load_master_config():
     if os.path.exists(MASTER_CONFIG_FILE):
         with open(MASTER_CONFIG_FILE, "r") as f:
@@ -49,7 +48,6 @@ def save_master_config(master_hash: bytes, key_salt: bytes):
         json.dump(config, f)
 
 
-# --- Класс для диалога добавления/редактирования пароля (без изменений) ---
 class PasswordDialog(QDialog):
     def __init__(self, parent=None, record=None):
         super().__init__(parent)
@@ -57,7 +55,6 @@ class PasswordDialog(QDialog):
         self.setGeometry(200, 200, 350, 250)
 
         self.record = record
-        self.original_password_hash = None
 
         layout = QVBoxLayout()
 
@@ -74,7 +71,7 @@ class PasswordDialog(QDialog):
         layout.addWidget(QLabel("Пароль:"))
         self.password_input = QLineEdit()
         self.password_input.setPlaceholderText("Оставьте пустым, чтобы не менять")
-        self.password_input.setEchoMode(QLineEdit.Password)
+        self.password_input.setEchoMode(QLineEdit.EchoMode.Password)
         layout.addWidget(self.password_input)
 
         layout.addWidget(QLabel("Заметки (опционально):"))
@@ -95,22 +92,21 @@ class PasswordDialog(QDialog):
         self.cancel_button.clicked.connect(self.reject)
 
         if self.record:
-            self.service_input.setText(self.record[1])  # service
-            self.login_input.setText(self.record[2])  # login
-            self.notes_input.setText(self.record[5] if self.record[5] else "")  # notes
+            self.service_input.setText(self.record[1])
+            self.login_input.setText(self.record[2])
+            self.notes_input.setText(self.record[5] if self.record[5] else "")
 
     def get_data(self):
         return (
             self.service_input.text(),
             self.login_input.text(),
-            self.password_input.text(),  # Если пароль не меняется, это будет пустая строка
+            self.password_input.text(),
             self.notes_input.text(),
         )
 
 
-# --- Основные окна ---
 class LoginWindow(QWidget, Ui_LoginWindowBase):
-    login_successful = Signal(bytes)  # Передаем производный мастер-ключ
+    login_successful = pyqtSignal(bytes)
 
     def __init__(self, db_manager: DatabaseManager, crypto_service: CryptoService):
         super().__init__()
@@ -121,14 +117,10 @@ class LoginWindow(QWidget, Ui_LoginWindowBase):
         self.crypto_service = crypto_service
 
         self.master_hash = None
-        self.master_key_salt_for_derived_key = (
-            None  # Соль для генерации AES-ключа из мастер-пароля
-        )
+        self.master_key_salt_for_derived_key = None
 
-        # Пытаемся загрузить мастер-данные из файла
         self.master_hash, self.master_key_salt_for_derived_key = load_master_config()
 
-        # Если мастер-пароль еще не установлен (первый запуск)
         if not self.master_hash:
             QMessageBox.information(
                 self,
@@ -151,12 +143,11 @@ class LoginWindow(QWidget, Ui_LoginWindowBase):
         new_key_salt = self.crypto_service.generate_salt()
         new_master_hash = self.crypto_service.hash_password(entered_password)
 
-        save_master_config(new_master_hash, new_key_salt)  # Сохраняем в файл!
+        save_master_config(new_master_hash, new_key_salt)
 
         QMessageBox.information(
             self, "Успех", "Мастер-пароль успешно установлен! Теперь войдите."
         )
-        # Обновляем состояние окна, чтобы оно действовало как обычное окно входа
         self.master_hash = new_master_hash
         self.master_key_salt_for_derived_key = new_key_salt
         self.password_input.clear()
@@ -236,9 +227,9 @@ class MainWindow(QMainWindow, Ui_MainWindowBase):
             ["Сервис", "Логин", "Пароль", "Заметки"]
         )
         self.passwords_table.verticalHeader().setVisible(False)
-        self.passwords_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
-        self.passwords_table.setSelectionBehavior(QAbstractItemView.SelectRows)
-        self.passwords_table.setSelectionMode(QAbstractItemView.SingleSelection)
+        self.passwords_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.passwords_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.passwords_table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
 
         self._load_passwords()
         print("DEBUG: MainWindow инициализация завершена.")
@@ -259,18 +250,16 @@ class MainWindow(QMainWindow, Ui_MainWindowBase):
         if records:
             self.passwords_table.setRowCount(len(records))
             for row_idx, record in enumerate(records):
-                item_service = QTableWidgetItem(record[1])  # Service
-                item_login = QTableWidgetItem(record[2])  # Login
-                item_password = QTableWidgetItem(
-                    "**********"
-                )  # Пароль всегда маскируем в таблице
+                item_service = QTableWidgetItem(record[1])
+                item_login = QTableWidgetItem(record[2])
+                item_password = QTableWidgetItem("**********")
                 item_notes = QTableWidgetItem(
                     record[5] if record[5] else ""
-                )  # Notes (может быть None)
+                )
 
-                item_service.setData(Qt.UserRole, record[0])  # ID
-                item_service.setData(Qt.UserRole + 1, record[3])  # encrypted_password
-                item_service.setData(Qt.UserRole + 2, record[4])  # salt
+                item_service.setData(Qt.ItemDataRole.UserRole, record[0])
+                item_service.setData(Qt.ItemDataRole.UserRole + 1, record[3])
+                item_service.setData(Qt.ItemDataRole.UserRole + 2, record[4])
 
                 self.passwords_table.setItem(row_idx, 0, item_service)
                 self.passwords_table.setItem(row_idx, 1, item_login)
@@ -279,14 +268,14 @@ class MainWindow(QMainWindow, Ui_MainWindowBase):
         else:
             print("DEBUG: Записей в БД нет.")
 
-        self.passwords_table.resizeColumnsToContents()
+        #self.passwords_table.resizeColumnsToContents()
         self.passwords_table.horizontalHeader().setStretchLastSection(True)
         print("DEBUG: Загрузка паролей завершена.")
 
     def _on_add(self):
         print("DEBUG: Кнопка 'Добавить' нажата.")
         dialog = PasswordDialog(self)
-        if dialog.exec() == QDialog.Accepted:
+        if dialog.exec() == QDialog.DialogCode.Accepted:
             service, login, password_plain, notes = dialog.get_data()
             if service and login and password_plain:
                 try:
@@ -323,14 +312,12 @@ class MainWindow(QMainWindow, Ui_MainWindowBase):
             )
             return
 
-        record_id = self.passwords_table.item(selected_row, 0).data(Qt.UserRole)
-        # encrypted_password_db = self.passwords_table.item(selected_row, 0).data(Qt.UserRole + 1) # Больше не нужно
-        salt_db = self.passwords_table.item(selected_row, 0).data(Qt.UserRole + 2)
+        record_id = self.passwords_table.item(selected_row, 0).data(Qt.ItemDataRole.UserRole)
+        salt_db = self.passwords_table.item(selected_row, 0).data(Qt.ItemDataRole.UserRole + 2)
 
         self.db_manager.connect()
-        full_record = self.db_manager.get_by_id(
-            record_id
-        )  # (id, service, login, encrypted_password, salt, notes)
+        full_record = self.db_manager.get_by_id(record_id
+        )
         self.db_manager.close()
 
         if not full_record:
@@ -339,18 +326,16 @@ class MainWindow(QMainWindow, Ui_MainWindowBase):
 
         dialog = PasswordDialog(
             self, record=full_record
-        )  # Передаем всю запись в диалог
-        if dialog.exec() == QDialog.Accepted:
+        )
+        if dialog.exec() == QDialog.DialogCode.Accepted:
             new_service, new_login, new_password_plain, new_notes = dialog.get_data()
             if new_service and new_login:
-                new_encrypted_password = full_record[
-                    3
-                ]  # Берем старый зашифрованный пароль
-                new_salt = full_record[4]  # Берем старую соль для записи
+                new_encrypted_password = full_record[3]
+                new_salt = full_record[4]
 
                 if (
                     new_password_plain
-                ):  # Если введен новый пароль, шифруем его с новой солью
+                ):
                     new_salt = self.crypto_service.generate_salt()
                     new_encrypted_password = self.crypto_service.encrypt_data(
                         new_password_plain
@@ -382,16 +367,16 @@ class MainWindow(QMainWindow, Ui_MainWindowBase):
             )
             return
 
-        record_id = self.passwords_table.item(selected_row, 0).data(Qt.UserRole)
+        record_id = self.passwords_table.item(selected_row, 0).data(Qt.ItemDataRole.UserRole)
 
         reply = QMessageBox.question(
             self,
             "Подтверждение",
             "Вы уверены, что хотите удалить выбранную запись?",
-            QMessageBox.Yes | QMessageBox.No,
-            QMessageBox.No,
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
         )
-        if reply == QMessageBox.Yes:
+        if reply == QMessageBox.StandardButton.Yes:
             self.db_manager.connect()
             if self.db_manager.delete_by_id(record_id):
                 self.db_manager.close()
@@ -412,9 +397,9 @@ class MainWindow(QMainWindow, Ui_MainWindowBase):
             )
             return
 
-        record_id = self.passwords_table.item(selected_row, 0).data(Qt.UserRole)
+        record_id = self.passwords_table.item(selected_row, 0).data(Qt.ItemDataRole.UserRole)
         encrypted_password = self.passwords_table.item(selected_row, 0).data(
-            Qt.UserRole + 1
+            Qt.ItemDataRole.UserRole + 1
         )
 
         if not encrypted_password:
@@ -440,7 +425,8 @@ class MainWindow(QMainWindow, Ui_MainWindowBase):
 if __name__ == "__main__":
     print("DEBUG: Приложение запускается.")
     app = QApplication(sys.argv)
-
+    app.setStyleSheet(WhiteNightsTheme.get_stylesheet())
+    
     db_manager = DatabaseManager()
     crypto_service = CryptoService()
 
@@ -456,7 +442,7 @@ if __name__ == "__main__":
     
     def on_login_success(derived_key):
         print("DEBUG: Вход успешен, открываем MainWindow.")
-        app.main_window = MainWindow(db_manager, crypto_service, derived_key) # Теперь это атрибут app
+        app.main_window = MainWindow(db_manager, crypto_service, derived_key)
         app.main_window.show()
         
     login_window.login_successful.connect(on_login_success)
