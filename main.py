@@ -109,11 +109,16 @@ class PasswordDialog(QDialog):
         self.password_input = QLineEdit()
         self.password_input.setPlaceholderText("Оставьте пустым, чтобы не менять")
         self.password_input.setEchoMode(QLineEdit.EchoMode.Password)
-        self.password_input.textChanged.connect(self._on_password_changed) # <-- ПОДКЛЮЧАЕМ СЛОТ ДЛЯ ОЦЕНКИ
+        self.password_input.textChanged.connect(self._on_password_changed)
         password_group_layout.addWidget(self.password_input, 1)
 
+        self.toggle_password_button = QPushButton("Показать")
+        self.toggle_password_button.setFixedWidth(85)
+        self.toggle_password_button.clicked.connect(self._toggle_password_visibility)
+        password_group_layout.addWidget(self.toggle_password_button)
+
         self.generate_password_button = QPushButton("Сгенерировать")
-        self.generate_password_button.setFixedWidth(150) # Фиксируем ширину кнопки
+        self.generate_password_button.setFixedWidth(150)
         password_group_layout.addWidget(self.generate_password_button)
         
         main_layout.addLayout(password_group_layout)
@@ -172,10 +177,21 @@ class PasswordDialog(QDialog):
         
         generated_password = "".join(password_chars)
         self.password_input.setText(generated_password)
-        logger.info("Пароль успешно сгенерирован и вставлен в поле.")
-        self._on_password_changed(generated_password) # Сразу оценим сгенерированный пароль
+        self.password_input.setEchoMode(QLineEdit.EchoMode.Normal)
+        self.toggle_password_button.setText("Скрыть")
+        logger.info("Пароль успешно сгенерирован и показан пользователю.")
+        self._on_password_changed(generated_password)
 
-    def _on_password_changed(self, password: str): # <-- МЕТОД ОЦЕНКИ НАДЕЖНОСТИ
+    def _toggle_password_visibility(self):
+        """Переключает отображение пароля в поле ввода."""
+        if self.password_input.echoMode() == QLineEdit.EchoMode.Password:
+            self.password_input.setEchoMode(QLineEdit.EchoMode.Normal)
+            self.toggle_password_button.setText("Скрыть")
+        else:
+            self.password_input.setEchoMode(QLineEdit.EchoMode.Password)
+            self.toggle_password_button.setText("Показать")
+
+    def _on_password_changed(self, password: str):
         strength_score = 0
         feedback = []
 
