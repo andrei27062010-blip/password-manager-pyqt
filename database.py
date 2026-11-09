@@ -1,5 +1,6 @@
 import sqlite3
 
+
 class DatabaseManager:
     def __init__(self, db_name="passwords.db"):
         self.db_name = db_name
