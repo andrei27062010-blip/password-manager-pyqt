@@ -431,17 +431,42 @@ class MainWindow(QMainWindow, Ui_MainWindowBase):
         if dialog.exec() == QDialog.DialogCode.Accepted:
             service, login, password_plain, notes = dialog.get_data()
             if service and login and password_plain:
+                service = service.strip()
+                login = login.strip()
+                if not service or not login:
+                    QMessageBox.warning(
+                        self, "Ошибка", "Сервис и логин не могут состоять только из пробелов."
+                    )
+                    return
                 try:
+                    self.db_manager.connect()
+                    duplicate_found = self.db_manager.is_duplicate(service, login)
+                    self.db_manager.close()
+                    if duplicate_found:
+                        QMessageBox.warning(
+                            self,
+                            "Повторная запись",
+                            "Для этого сервиса уже сохранён такой логин."
+                        )
+                        return
+
                     record_salt = self.crypto_service.generate_salt()
                     encrypted_password = self.crypto_service.encrypt_data(
                         password_plain
                     )
 
                     self.db_manager.connect()
-                    self.db_manager.add_record(
+                    added = self.db_manager.add_record(
                         service, login, encrypted_password, record_salt, notes
                     )
                     self.db_manager.close()
+                    if not added:
+                        QMessageBox.warning(
+                            self,
+                            "Повторная запись",
+                            "Для этого сервиса уже сохранён такой логин."
+                        )
+                        return
                     self._load_passwords()
                     QMessageBox.information(self, "Успех", "Запись успешно добавлена!")
                     logger.info(f"Запись успешно добавлена для сервиса: {service}")
@@ -486,6 +511,27 @@ class MainWindow(QMainWindow, Ui_MainWindowBase):
         if dialog.exec() == QDialog.DialogCode.Accepted:
             new_service, new_login, new_password_plain, new_notes = dialog.get_data()
             if new_service and new_login:
+                new_service = new_service.strip()
+                new_login = new_login.strip()
+                if not new_service or not new_login:
+                    QMessageBox.warning(
+                        self, "Ошибка", "Сервис и логин не могут состоять только из пробелов."
+                    )
+                    return
+
+                self.db_manager.connect()
+                duplicate_found = self.db_manager.is_duplicate(
+                    new_service, new_login, exclude_id=record_id
+                )
+                self.db_manager.close()
+                if duplicate_found:
+                    QMessageBox.warning(
+                        self,
+                        "Повторная запись",
+                        "Для этого сервиса уже сохранён такой логин."
+                    )
+                    return
+
                 new_encrypted_password = full_record[3]
                 new_salt = full_record[4]
 
@@ -496,7 +542,7 @@ class MainWindow(QMainWindow, Ui_MainWindowBase):
                     )
 
                 self.db_manager.connect()
-                self.db_manager.update_record(
+                updated = self.db_manager.update_record(
                     record_id,
                     new_service,
                     new_login,
@@ -505,6 +551,13 @@ class MainWindow(QMainWindow, Ui_MainWindowBase):
                     new_notes,
                 )
                 self.db_manager.close()
+                if not updated:
+                    QMessageBox.warning(
+                        self,
+                        "Повторная запись",
+                        "Для этого сервиса уже сохранён такой логин."
+                    )
+                    return
                 self._load_passwords()
                 QMessageBox.information(self, "Успех", "Запись успешно обновлена!")
                 logger.info(f"Запись с ID {record_id} успешно обновлена для сервиса: {new_service}")
