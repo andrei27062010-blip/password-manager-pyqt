@@ -20,6 +20,10 @@ from PyQt6.QtWidgets import (
     QLabel,
     QMessageBox,
     QTableWidgetItem,
+    QListWidget,
+    QListWidgetItem,
+    QInputDialog,
+    QComboBox,
 )
 from PyQt6.QtCore import pyqtSignal, Qt
 from PyQt6.QtGui import QClipboard
@@ -79,7 +83,7 @@ def save_master_config(master_hash: bytes, key_salt: bytes):
 
 
 class PasswordDialog(QDialog):
-    def __init__(self, parent=None, record=None):
+    def __init__(self, parent=None, record=None, categories=None):
         super().__init__(parent)
         self.setWindowTitle("Добавить/Редактировать запись")
         self.setGeometry(200, 200, 450, 300)
@@ -127,6 +131,13 @@ class PasswordDialog(QDialog):
         self.password_strength_label.setStyleSheet("font-weight: bold;")
         main_layout.addWidget(self.password_strength_label)
 
+        main_layout.addWidget(QLabel("Категория:"))
+        self.category_combo = QComboBox()
+        self.category_combo.addItem("Без категории", None)
+        for category_id, category_name in (categories or []):
+            self.category_combo.addItem(category_name, category_id)
+        main_layout.addWidget(self.category_combo)
+
         main_layout.addWidget(QLabel("Заметки (опционально):"))
         self.notes_input = QLineEdit()
         self.notes_input.setPlaceholderText("Дополнительные заметки")
@@ -149,6 +160,8 @@ class PasswordDialog(QDialog):
             self.service_input.setText(self.record[1])
             self.login_input.setText(self.record[2])
             self.notes_input.setText(self.record[5] if self.record[5] else "")
+            category_index = self.category_combo.findData(self.record[6])
+            self.category_combo.setCurrentIndex(max(category_index, 0))
             # При редактировании не показываем пароль, но можем оценить его надежность, если он был изменен
             self._on_password_changed(self.password_input.text())
 
@@ -159,6 +172,7 @@ class PasswordDialog(QDialog):
             self.login_input.text(),
             self.password_input.text(),
             self.notes_input.text(),
+            self.category_combo.currentData(),
         )
 
     def _on_generate_password(self):
@@ -340,303 +354,292 @@ class LoginWindow(QWidget, Ui_LoginWindowBase):
 
 
 class MainWindow(QMainWindow, Ui_MainWindowBase):
-    def __init__(
-        self,
-        db_manager: DatabaseManager,
-        crypto_service: CryptoService,
-        master_key_derived: bytes = None,
-    ):
+    def __init__(self, db_manager, crypto_service, master_key_derived=None):
         super().__init__()
         self.setupUi(self)
-        self.setWindowTitle("Менеджер паролей: Основное окно")
-        logger.info("MainWindow инициализируется.")
-
+        self.setWindowTitle("Менеджер паролей")
         self.db_manager = db_manager
         self.crypto_service = crypto_service
 
         if master_key_derived:
             try:
                 self.crypto_service.set_master_key(master_key_derived)
-                logger.info("Мастер-ключ для CryptoService установлен.")
             except Exception as e:
-                logger.critical(f"Ошибка при установке мастер-ключа: {e}", exc_info=True)
-                QMessageBox.critical(
-                    self, "Ошибка", f"Не удалось установить ключ шифрования: {e}"
-                )
+                logger.critical("Ошибка установки ключа: %s", e, exc_info=True)
+                QMessageBox.critical(self, "Ошибка", f"Не удалось установить ключ шифрования: {e}")
         else:
-            logger.critical("Ключ шифрования не был передан в MainWindow.")
-            QMessageBox.critical(
-                self,
-                "Ошибка",
-                "Ключ шифрования не был передан. Дешифрование невозможно.",
-            )
+            QMessageBox.critical(self, "Ошибка", "Ключ шифрования не был передан.")
 
         self.add_button.clicked.connect(self._on_add)
         self.edit_button.clicked.connect(self._on_edit)
         self.delete_button.clicked.connect(self._on_delete)
         self.copy_password_button.clicked.connect(self._on_copy_password)
+        self.add_category_button.clicked.connect(self._on_add_category)
+        self.delete_category_button.clicked.connect(self._on_delete_category)
+        self.category_list.currentItemChanged.connect(self._refresh_passwords)
+        self.search_input.textChanged.connect(self._refresh_passwords)
+        self.passwords_table.cellClicked.connect(self._on_table_cell_clicked)
 
-        self.passwords_table.setColumnCount(4)
-        self.passwords_table.setHorizontalHeaderLabels(
-            ["Сервис", "Логин", "Пароль", "Заметки"]
-        )
+        self.passwords_table.setColumnCount(5)
+        self.passwords_table.setHorizontalHeaderLabels(["Сервис", "Логин", "Пароль", "Заметки", "★"])
         self.passwords_table.verticalHeader().setVisible(False)
         self.passwords_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.passwords_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.passwords_table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self.passwords_table.setColumnWidth(4, 48)
+        self._load_categories()
 
-        self._load_passwords()
-        logger.info("MainWindow инициализация завершена.")
-
-    def _load_passwords(self):
-        logger.info("Загрузка паролей...")
+    def _database_categories(self):
         self.db_manager.connect()
         try:
-            records = self.db_manager.get_all()
-            logger.info(f"Получено записей из БД: {len(records)}")
+            return self.db_manager.get_categories()
+        finally:
+            self.db_manager.close()
+
+    def _load_categories(self):
+        categories = self._database_categories()
+        self.category_list.clear()
+        all_item = QListWidgetItem("Все")
+        all_item.setData(Qt.ItemDataRole.UserRole, None)
+        self.category_list.addItem(all_item)
+        favorites_item = QListWidgetItem("Избранное  ★")
+        favorites_item.setData(Qt.ItemDataRole.UserRole, "favorites")
+        self.category_list.addItem(favorites_item)
+
+        if categories:
+            separator = QListWidgetItem("Мои категории")
+            separator.setFlags(Qt.ItemFlag.NoItemFlags)
+            self.category_list.addItem(separator)
+            for category_id, name in categories:
+                item = QListWidgetItem(name)
+                item.setData(Qt.ItemDataRole.UserRole, category_id)
+                self.category_list.addItem(item)
+        self.category_list.setCurrentRow(0)
+        self._refresh_passwords()
+
+    def _selected_category(self):
+        item = self.category_list.currentItem()
+        value = item.data(Qt.ItemDataRole.UserRole) if item else None
+        if value == "favorites":
+            return None, True
+        if isinstance(value, int):
+            return value, False
+        return None, False
+
+    def _refresh_passwords(self, *_args):
+        category_id, favorites_only = self._selected_category()
+        self.db_manager.connect()
+        try:
+            records = self.db_manager.get_passwords(
+                category_id, favorites_only, self.search_input.text()
+            )
         except Exception as e:
-            logger.error(f"Ошибка при получении записей из БД: {e}", exc_info=True)
+            logger.error("Ошибка загрузки паролей: %s", e, exc_info=True)
             records = []
+            QMessageBox.critical(self, "Ошибка", f"Не удалось загрузить пароли: {e}")
         finally:
             self.db_manager.close()
 
         self.passwords_table.setRowCount(0)
-        if records:
-            self.passwords_table.setRowCount(len(records))
-            for row_idx, record in enumerate(records):
-                item_service = QTableWidgetItem(record[1])
-                item_login = QTableWidgetItem(record[2])
-                item_password = QTableWidgetItem("**********")
-                item_notes = QTableWidgetItem(
-                    record[5] if record[5] else ""
-                )
-
-                item_service.setData(Qt.ItemDataRole.UserRole, record[0])
-                item_service.setData(Qt.ItemDataRole.UserRole + 1, record[3])
-                item_service.setData(Qt.ItemDataRole.UserRole + 2, record[4])
-
-                self.passwords_table.setItem(row_idx, 0, item_service)
-                self.passwords_table.setItem(row_idx, 1, item_login)
-                self.passwords_table.setItem(row_idx, 2, item_password)
-                self.passwords_table.setItem(row_idx, 3, item_notes)
-        else:
-            logger.info("Записей в БД нет.")
-
+        for row, record in enumerate(records):
+            record_id, service, login, encrypted, salt, notes, category_id, favorite = record
+            self.passwords_table.insertRow(row)
+            service_item = QTableWidgetItem(service)
+            service_item.setData(Qt.ItemDataRole.UserRole, record_id)
+            service_item.setData(Qt.ItemDataRole.UserRole + 1, encrypted)
+            service_item.setData(Qt.ItemDataRole.UserRole + 2, salt)
+            service_item.setData(Qt.ItemDataRole.UserRole + 3, category_id)
+            service_item.setData(Qt.ItemDataRole.UserRole + 4, bool(favorite))
+            self.passwords_table.setItem(row, 0, service_item)
+            self.passwords_table.setItem(row, 1, QTableWidgetItem(login))
+            self.passwords_table.setItem(row, 2, QTableWidgetItem("**********"))
+            self.passwords_table.setItem(row, 3, QTableWidgetItem(notes or ""))
+            favorite_item = QTableWidgetItem("★" if favorite else "☆")
+            favorite_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            self.passwords_table.setItem(row, 4, favorite_item)
         self.passwords_table.horizontalHeader().setStretchLastSection(True)
-        logger.info("Загрузка паролей завершена.")
 
-    def _on_add(self):
-        logger.info("Нажата кнопка 'Добавить'.")
-        dialog = PasswordDialog(self)
-        if dialog.exec() == QDialog.DialogCode.Accepted:
-            service, login, password_plain, notes = dialog.get_data()
-            if service and login and password_plain:
-                service = service.strip()
-                login = login.strip()
-                if not service or not login:
-                    QMessageBox.warning(
-                        self, "Ошибка", "Сервис и логин не могут состоять только из пробелов."
-                    )
-                    return
-                try:
-                    self.db_manager.connect()
-                    duplicate_found = self.db_manager.is_duplicate(service, login)
-                    self.db_manager.close()
-                    if duplicate_found:
-                        QMessageBox.warning(
-                            self,
-                            "Повторная запись",
-                            "Для этого сервиса уже сохранён такой логин."
-                        )
-                        return
-
-                    record_salt = self.crypto_service.generate_salt()
-                    encrypted_password = self.crypto_service.encrypt_data(
-                        password_plain
-                    )
-
-                    self.db_manager.connect()
-                    added = self.db_manager.add_record(
-                        service, login, encrypted_password, record_salt, notes
-                    )
-                    self.db_manager.close()
-                    if not added:
-                        QMessageBox.warning(
-                            self,
-                            "Повторная запись",
-                            "Для этого сервиса уже сохранён такой логин."
-                        )
-                        return
-                    self._load_passwords()
-                    QMessageBox.information(self, "Успех", "Запись успешно добавлена!")
-                    logger.info(f"Запись успешно добавлена для сервиса: {service}")
-                except Exception as e:
-                    logger.error(f"Ошибка при добавлении записи: {e}", exc_info=True)
-                    QMessageBox.critical(
-                        self, "Ошибка", f"Не удалось добавить запись: {e}"
-                    )
-            else:
-                QMessageBox.warning(
-                    self, "Ошибка", "Сервис, логин и пароль обязательны для заполнения."
-                )
-                logger.warning("Попытка добавить запись с незаполненными обязательными полями.")
-
-    def _on_edit(self):
-        logger.info("Нажата кнопка 'Редактировать'.")
-        selected_row = self.passwords_table.currentRow()
-        if selected_row < 0:
-            QMessageBox.warning(
-                self,
-                "Редактирование",
-                "Пожалуйста, выберите запись для редактирования.",
-            )
-            logger.warning("Попытка редактирования без выбора записи.")
+    def _on_add_category(self):
+        name, accepted = QInputDialog.getText(self, "Новая категория", "Название категории:")
+        if not accepted:
             return
-
-        record_id = self.passwords_table.item(selected_row, 0).data(Qt.ItemDataRole.UserRole)
-        # salt_db больше не нужен напрямую здесь, его получим из full_record
-        
+        if not name.strip():
+            QMessageBox.warning(self, "Категория", "Название категории не может быть пустым.")
+            return
         self.db_manager.connect()
-        full_record = self.db_manager.get_by_id(record_id)
-        self.db_manager.close()
-
-        if not full_record:
-            QMessageBox.critical(self, "Ошибка", "Запись не найдена в базе данных.")
-            logger.error(f"Запись с ID {record_id} не найдена в БД для редактирования.")
+        try:
+            category_id = self.db_manager.add_category(name)
+        finally:
+            self.db_manager.close()
+        if category_id is None:
+            QMessageBox.warning(self, "Категория", "Такая категория уже существует или не может быть создана.")
             return
+        self._load_categories()
+        for index in range(self.category_list.count()):
+            item = self.category_list.item(index)
+            if item.data(Qt.ItemDataRole.UserRole) == category_id:
+                self.category_list.setCurrentItem(item)
+                break
 
-        dialog = PasswordDialog(
-            self, record=full_record
-        )
-        if dialog.exec() == QDialog.DialogCode.Accepted:
-            new_service, new_login, new_password_plain, new_notes = dialog.get_data()
-            if new_service and new_login:
-                new_service = new_service.strip()
-                new_login = new_login.strip()
-                if not new_service or not new_login:
-                    QMessageBox.warning(
-                        self, "Ошибка", "Сервис и логин не могут состоять только из пробелов."
-                    )
-                    return
-
-                self.db_manager.connect()
-                duplicate_found = self.db_manager.is_duplicate(
-                    new_service, new_login, exclude_id=record_id
-                )
-                self.db_manager.close()
-                if duplicate_found:
-                    QMessageBox.warning(
-                        self,
-                        "Повторная запись",
-                        "Для этого сервиса уже сохранён такой логин."
-                    )
-                    return
-
-                new_encrypted_password = full_record[3]
-                new_salt = full_record[4]
-
-                if new_password_plain:
-                    new_salt = self.crypto_service.generate_salt()
-                    new_encrypted_password = self.crypto_service.encrypt_data(
-                        new_password_plain
-                    )
-
-                self.db_manager.connect()
-                updated = self.db_manager.update_record(
-                    record_id,
-                    new_service,
-                    new_login,
-                    new_encrypted_password,
-                    new_salt,
-                    new_notes,
-                )
-                self.db_manager.close()
-                if not updated:
-                    QMessageBox.warning(
-                        self,
-                        "Повторная запись",
-                        "Для этого сервиса уже сохранён такой логин."
-                    )
-                    return
-                self._load_passwords()
-                QMessageBox.information(self, "Успех", "Запись успешно обновлена!")
-                logger.info(f"Запись с ID {record_id} успешно обновлена для сервиса: {new_service}")
-            else:
-                QMessageBox.warning(
-                    self, "Ошибка", "Сервис и логин обязательны для заполнения."
-                )
-                logger.warning(f"Попытка обновить запись {record_id} с незаполненными обязательными полями.")
-
-
-    def _on_delete(self):
-        logger.info("Нажата кнопка 'Удалить'.")
-        selected_row = self.passwords_table.currentRow()
-        if selected_row < 0:
-            QMessageBox.warning(
-                self, "Удаление", "Пожалуйста, выберите запись для удаления."
-            )
-            logger.warning("Попытка удаления без выбора записи.")
+    def _on_delete_category(self):
+        item = self.category_list.currentItem()
+        category_id = item.data(Qt.ItemDataRole.UserRole) if item else None
+        if not isinstance(category_id, int):
+            QMessageBox.information(self, "Удаление категории", "Выберите собственную категорию.")
             return
-
-        record_id = self.passwords_table.item(selected_row, 0).data(Qt.ItemDataRole.UserRole)
-
         reply = QMessageBox.question(
-            self,
-            "Подтверждение",
-            "Вы уверены, что хотите удалить выбранную запись?",
+            self, "Удаление категории",
+            "Удалить категорию? Пароли сохранятся и останутся в разделе «Все».",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No,
         )
-        if reply == QMessageBox.StandardButton.Yes:
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+        self.db_manager.connect()
+        try:
+            deleted = self.db_manager.delete_category(category_id)
+        finally:
+            self.db_manager.close()
+        if not deleted:
+            QMessageBox.critical(self, "Ошибка", "Не удалось удалить категорию.")
+            return
+        self._load_categories()
+
+    def _on_table_cell_clicked(self, row, column):
+        if column != 4:
+            return
+        item = self.passwords_table.item(row, 0)
+        record_id = item.data(Qt.ItemDataRole.UserRole)
+        new_favorite = not item.data(Qt.ItemDataRole.UserRole + 4)
+        self.db_manager.connect()
+        try:
+            updated = self.db_manager.set_favorite(record_id, new_favorite)
+        finally:
+            self.db_manager.close()
+        if updated:
+            self._refresh_passwords()
+        else:
+            QMessageBox.critical(self, "Ошибка", "Не удалось изменить избранное.")
+
+    def _dialog_categories(self):
+        return self._database_categories()
+
+    def _on_add(self):
+        dialog = PasswordDialog(self, categories=self._dialog_categories())
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+        service, login, password, notes, category_id = dialog.get_data()
+        service, login = service.strip(), login.strip()
+        if not service or not login or not password:
+            QMessageBox.warning(self, "Ошибка", "Сервис, логин и пароль обязательны для заполнения.")
+            return
+        try:
+            encrypted = self.crypto_service.encrypt_data(password)
+            salt = self.crypto_service.generate_salt()
             self.db_manager.connect()
-            if self.db_manager.delete_by_id(record_id):
-                self.db_manager.close()
-                self._load_passwords()
-                QMessageBox.information(self, "Успех", "Запись успешно удалена.")
-                logger.info(f"Запись с ID {record_id} успешно удалена.")
-            else:
-                self.db_manager.close()
-                QMessageBox.critical(self, "Ошибка", "Не удалось удалить запись.")
-                logger.error(f"Не удалось удалить запись с ID {record_id}.")
+            added = self.db_manager.add_record(service, login, encrypted, salt, notes, category_id)
+        except Exception as e:
+            logger.error("Ошибка добавления записи: %s", e, exc_info=True)
+            QMessageBox.critical(self, "Ошибка", f"Не удалось добавить запись: {e}")
+            return
+        finally:
+            self.db_manager.close()
+        if not added:
+            QMessageBox.warning(self, "Повторная запись", "Для этого сервиса уже сохранён такой логин.")
+            return
+        self._refresh_passwords()
+        QMessageBox.information(self, "Успех", "Запись успешно добавлена.")
+
+    def _on_edit(self):
+        row = self.passwords_table.currentRow()
+        if row < 0:
+            QMessageBox.warning(self, "Редактирование", "Выберите запись для редактирования.")
+            return
+        record_id = self.passwords_table.item(row, 0).data(Qt.ItemDataRole.UserRole)
+        self.db_manager.connect()
+        try:
+            record = self.db_manager.get_by_id(record_id)
+            categories = self.db_manager.get_categories()
+        finally:
+            self.db_manager.close()
+        if not record:
+            QMessageBox.critical(self, "Ошибка", "Запись не найдена в базе данных.")
+            return
+
+        dialog = PasswordDialog(self, record=record, categories=categories)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+        service, login, password, notes, category_id = dialog.get_data()
+        service, login = service.strip(), login.strip()
+        if not service or not login:
+            QMessageBox.warning(self, "Ошибка", "Сервис и логин обязательны для заполнения.")
+            return
+
+        encrypted, salt = record[3], record[4]
+        try:
+            if password:
+                encrypted = self.crypto_service.encrypt_data(password)
+                salt = self.crypto_service.generate_salt()
+            self.db_manager.connect()
+            updated = self.db_manager.update_record(
+                record_id, service, login, encrypted, salt, notes,
+                category_id, bool(record[7])
+            )
+        except Exception as e:
+            logger.error("Ошибка обновления записи: %s", e, exc_info=True)
+            QMessageBox.critical(self, "Ошибка", f"Не удалось обновить запись: {e}")
+            return
+        finally:
+            self.db_manager.close()
+        if not updated:
+            QMessageBox.warning(self, "Повторная запись", "Не удалось обновить запись. Возможно, такой логин уже существует.")
+            return
+        self._refresh_passwords()
+        QMessageBox.information(self, "Успех", "Запись успешно обновлена.")
+
+    def _on_delete(self):
+        row = self.passwords_table.currentRow()
+        if row < 0:
+            QMessageBox.warning(self, "Удаление", "Выберите запись для удаления.")
+            return
+        record_id = self.passwords_table.item(row, 0).data(Qt.ItemDataRole.UserRole)
+        reply = QMessageBox.question(
+            self, "Подтверждение", "Удалить выбранную запись?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+        self.db_manager.connect()
+        try:
+            deleted = self.db_manager.delete_by_id(record_id)
+        finally:
+            self.db_manager.close()
+        if deleted:
+            self._refresh_passwords()
+            QMessageBox.information(self, "Успех", "Запись успешно удалена.")
+        else:
+            QMessageBox.critical(self, "Ошибка", "Не удалось удалить запись.")
 
     def _on_copy_password(self):
-        logger.info("Нажата кнопка 'Копировать пароль'.")
-        selected_row = self.passwords_table.currentRow()
-        if selected_row < 0:
-            QMessageBox.warning(
-                self,
-                "Копирование",
-                "Пожалуйста, выберите запись для копирования пароля.",
-            )
-            logger.warning("Попытка копирования без выбора записи.")
+        row = self.passwords_table.currentRow()
+        if row < 0:
+            QMessageBox.warning(self, "Копирование", "Выберите запись для копирования пароля.")
             return
-
-        record_id = self.passwords_table.item(selected_row, 0).data(Qt.ItemDataRole.UserRole)
-        encrypted_password = self.passwords_table.item(selected_row, 0).data(
-            Qt.ItemDataRole.UserRole + 1
-        )
-
-        if not encrypted_password:
-            QMessageBox.critical(
-                self, "Ошибка", "Не удалось получить зашифрованный пароль."
-            )
-            logger.error(f"Не удалось получить зашифрованный пароль для записи ID {record_id}.")
+        item = self.passwords_table.item(row, 0)
+        record_id = item.data(Qt.ItemDataRole.UserRole)
+        encrypted = item.data(Qt.ItemDataRole.UserRole + 1)
+        if not encrypted:
+            QMessageBox.critical(self, "Ошибка", "Не удалось получить зашифрованный пароль.")
             return
-
         try:
-            decrypted_password = self.crypto_service.decrypt_data(encrypted_password)
-            QApplication.clipboard().setText(decrypted_password)
-            QMessageBox.information(
-                self, "Копирование", "Пароль успешно скопирован в буфер обмена."
-            )
-            logger.info(f"Пароль для записи ID {record_id} успешно скопирован в буфер обмена.")
+            decrypted = self.crypto_service.decrypt_data(encrypted)
+            QApplication.clipboard().setText(decrypted)
+            QMessageBox.information(self, "Копирование", "Пароль скопирован в буфер обмена.")
+            logger.info("Пароль записи %s скопирован в буфер обмена.", record_id)
         except Exception as e:
-            logger.error(f"Ошибка дешифрования пароля для записи ID {record_id}: {e}", exc_info=True)
-            QMessageBox.critical(
-                self,
-                "Ошибка дешифрования",
-                f"Не удалось дешифровать пароль. Возможно, неверный мастер-пароль или ошибка: {e}",
-            )
+            logger.error("Ошибка дешифрования записи %s: %s", record_id, e, exc_info=True)
+            QMessageBox.critical(self, "Ошибка дешифрования", f"Не удалось дешифровать пароль: {e}")
 
 
 if __name__ == "__main__":
