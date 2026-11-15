@@ -3,82 +3,34 @@
  <class>MainWindow</class>
  <widget class="QMainWindow" name="MainWindow">
   <property name="geometry">
-   <rect>
-    <x>0</x>
-    <y>0</y>
-    <width>563</width>
-    <height>393</height>
-   </rect>
+   <rect><x>0</x><y>0</y><width>900</width><height>540</height></rect>
   </property>
-  <property name="sizePolicy">
-   <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
-    <horstretch>0</horstretch>
-    <verstretch>0</verstretch>
-   </sizepolicy>
-  </property>
-  <property name="windowTitle">
-   <string>MainWindow</string>
-  </property>
-  <property name="iconSize">
-   <size>
-    <width>24</width>
-    <height>24</height>
-   </size>
-  </property>
+  <property name="windowTitle"><string>Менеджер паролей</string></property>
   <widget class="QWidget" name="centralwidget">
-   <property name="sizePolicy">
-    <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
-     <horstretch>0</horstretch>
-     <verstretch>0</verstretch>
-    </sizepolicy>
-   </property>
-   <layout class="QVBoxLayout" name="verticalLayout_3">
+   <layout class="QHBoxLayout" name="main_layout">
     <item>
-     <layout class="QVBoxLayout" name="verticalLayout_2" stretch="1,0">
+     <layout class="QVBoxLayout" name="sidebar_layout">
+      <item><widget class="QLabel" name="sidebar_title"><property name="text"><string>Разделы</string></property></widget></item>
       <item>
-       <widget class="QTableWidget" name="passwords_table">
-        <property name="sizePolicy">
-         <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
-          <horstretch>0</horstretch>
-          <verstretch>0</verstretch>
-         </sizepolicy>
-        </property>
+       <widget class="QListWidget" name="category_list">
+        <property name="minimumSize"><size><width>160</width><height>0</height></size></property>
+        <property name="maximumSize"><size><width>220</width><height>16777215</height></size></property>
        </widget>
       </item>
+      <item><widget class="QPushButton" name="add_category_button"><property name="text"><string>＋ Создать категорию</string></property></widget></item>
+      <item><widget class="QPushButton" name="delete_category_button"><property name="text"><string>Удалить категорию</string></property></widget></item>
+     </layout>
+    </item>
+    <item>
+     <layout class="QVBoxLayout" name="content_layout">
+      <item><widget class="QLineEdit" name="search_input"><property name="placeholderText"><string>Поиск по сервису, логину и заметкам...</string></property></widget></item>
+      <item><widget class="QTableWidget" name="passwords_table"/></item>
       <item>
-       <layout class="QVBoxLayout" name="verticalLayout">
-        <item>
-         <layout class="QHBoxLayout" name="horizontalLayout">
-          <item>
-           <widget class="QPushButton" name="add_button">
-            <property name="text">
-             <string>Добавить</string>
-            </property>
-           </widget>
-          </item>
-          <item>
-           <widget class="QPushButton" name="edit_button">
-            <property name="text">
-             <string>Редактировать</string>
-            </property>
-           </widget>
-          </item>
-          <item>
-           <widget class="QPushButton" name="delete_button">
-            <property name="text">
-             <string>Удалить</string>
-            </property>
-           </widget>
-          </item>
-          <item>
-           <widget class="QPushButton" name="copy_password_button">
-            <property name="text">
-             <string>Копировать пароль</string>
-            </property>
-           </widget>
-          </item>
-         </layout>
-        </item>
+       <layout class="QHBoxLayout" name="buttons_layout">
+        <item><widget class="QPushButton" name="add_button"><property name="text"><string>Добавить</string></property></widget></item>
+        <item><widget class="QPushButton" name="edit_button"><property name="text"><string>Редактировать</string></property></widget></item>
+        <item><widget class="QPushButton" name="delete_button"><property name="text"><string>Удалить</string></property></widget></item>
+        <item><widget class="QPushButton" name="copy_password_button"><property name="text"><string>Копировать пароль</string></property></widget></item>
        </layout>
       </item>
      </layout>
