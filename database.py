@@ -125,7 +125,7 @@ class DatabaseManager:
         if not self.cursor:
             return None
         normalized_name = name.strip()
-        if not normalized_name:
+        if not normalized_name or self._normalize(normalized_name) in {"все", "избранное", "мои категории"}:
             return None
         try:
             self.cursor.execute("SELECT name FROM categories")
@@ -188,17 +188,20 @@ class DatabaseManager:
             query += " AND category_id = ?"
             params.append(category_id)
 
-        search_text = search_text.strip()
-        if search_text:
-            pattern = f"%{search_text}%"
-            query += " AND (service LIKE ? COLLATE NOCASE "
-            query += "OR login LIKE ? COLLATE NOCASE OR notes LIKE ? COLLATE NOCASE)"
-            params.extend((pattern, pattern, pattern))
-
         query += " ORDER BY service COLLATE NOCASE, login COLLATE NOCASE"
         try:
             self.cursor.execute(query, params)
-            return self.cursor.fetchall()
+            records = self.cursor.fetchall()
+            search_text = search_text.strip().casefold()
+            if search_text:
+                records = [
+                    record for record in records
+                    if any(
+                        search_text in (value or "").casefold()
+                        for value in (record[1], record[2], record[5])
+                    )
+                ]
+            return records
         except sqlite3.Error as e:
             print(f"Error getting passwords: {e}")
             return []
