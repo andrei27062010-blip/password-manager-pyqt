@@ -128,6 +128,11 @@ class DatabaseManager:
         if not normalized_name:
             return None
         try:
+            self.cursor.execute("SELECT name FROM categories")
+            existing_names = [row[0] for row in self.cursor.fetchall()]
+            if any(self._normalize(existing) == self._normalize(normalized_name)
+                   for existing in existing_names):
+                return None
             self.cursor.execute(
                 "INSERT INTO categories (name) VALUES (?)", (normalized_name,)
             )
