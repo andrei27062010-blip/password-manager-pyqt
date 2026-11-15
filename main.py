@@ -86,7 +86,7 @@ class PasswordDialog(QDialog):
     def __init__(self, parent=None, record=None, categories=None):
         super().__init__(parent)
         self.setWindowTitle("Добавить/Редактировать запись")
-        self.setGeometry(200, 200, 450, 300)
+        self.setGeometry(200, 200, 450, 360)
         
 
 
@@ -472,7 +472,7 @@ class MainWindow(QMainWindow, Ui_MainWindowBase):
         finally:
             self.db_manager.close()
         if category_id is None:
-            QMessageBox.warning(self, "Категория", "Такая категория уже существует или не может быть создана.")
+            QMessageBox.warning(self, "Категория", "Название категории уже занято или зарезервировано.")
             return
         self._load_categories()
         for index in range(self.category_list.count()):
