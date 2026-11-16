@@ -199,7 +199,7 @@ class DatabaseManager:
                     record for record in records
                     if any(
                         search_text in (value or "").casefold()
-                        for value in (record[1], record[2], record[5])
+                        for value in (record[1], record[2], record[4])
                     )
                 ]
             return records
