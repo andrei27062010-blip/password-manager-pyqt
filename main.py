@@ -1,4 +1,5 @@
 import sys
+import csv
 import os
 import json
 import base64
@@ -24,6 +25,7 @@ from PyQt6.QtWidgets import (
     QListWidgetItem,
     QInputDialog,
     QComboBox,
+    QFileDialog,
 )
 from PyQt6.QtCore import pyqtSignal, Qt
 from PyQt6.QtGui import QClipboard
@@ -32,7 +34,8 @@ from ui.login_window import Ui_Form as Ui_LoginWindowBase
 from ui.main_window import Ui_MainWindow as Ui_MainWindowBase
 from theme import WhiteNightsTheme 
 from database import DatabaseManager
-from crypto import CryptoService\nfrom csv_transfer import read_csv, write_csv
+from crypto import CryptoService
+from csv_transfer import read_csv, write_csv
 
 # --- НАСТРОЙКА ЛОГГИРОВАНИЯ ---
 # Создаем папку для логов, если ее нет
@@ -373,7 +376,8 @@ class MainWindow(QMainWindow, Ui_MainWindowBase):
         self.add_button.clicked.connect(self._on_add)
         self.edit_button.clicked.connect(self._on_edit)
         self.delete_button.clicked.connect(self._on_delete)
-        self.copy_password_button.clicked.connect(self._on_copy_password)\n        self.import_export_button.clicked.connect(self._open_import_export)
+        self.copy_password_button.clicked.connect(self._on_copy_password)
+        self.import_export_button.clicked.connect(self._open_import_export)
         self.add_category_button.clicked.connect(self._on_add_category)
         self.delete_category_button.clicked.connect(self._on_delete_category)
         self.category_list.currentItemChanged.connect(self._refresh_passwords)
@@ -449,7 +453,7 @@ class MainWindow(QMainWindow, Ui_MainWindowBase):
 
         try:
             write_csv(path, export_records)
-        except (OSError, ValueError) as e:
+        except (OSError, ValueError, csv.Error) as e:
             logger.error("Ошибка записи CSV-файла: %s", e, exc_info=True)
             QMessageBox.critical(self, "Ошибка экспорта", f"Не удалось сохранить CSV-файл: {e}")
             return
@@ -466,7 +470,7 @@ class MainWindow(QMainWindow, Ui_MainWindowBase):
             return
         try:
             imported_records = read_csv(path)
-        except (OSError, UnicodeError, ValueError) as e:
+        except (OSError, UnicodeError, ValueError, csv.Error) as e:
             logger.warning("CSV-файл не прошёл проверку: %s", e)
             QMessageBox.critical(self, "Ошибка импорта", f"Не удалось прочитать CSV-файл:\n{e}")
             return
