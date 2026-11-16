@@ -2,12 +2,12 @@ import csv
 
 
 FIELD_ALIASES = {
-    "service": {"service", "name", "title", "website", "site", "url"},
-    "login": {"login", "username", "user", "email"},
-    "password": {"password", "pass"},
-    "notes": {"notes", "note", "comment", "comments"},
-    "category": {"category", "folder", "group"},
-    "is_favorite": {"is_favorite", "favorite", "favourite", "starred"},
+    "service": ("service", "name", "title", "website", "site", "url"),
+    "login": ("login", "username", "user", "email"),
+    "password": ("password", "pass"),
+    "notes": ("notes", "note", "comment", "comments"),
+    "category": ("category", "folder", "group"),
+    "is_favorite": ("is_favorite", "favorite", "favourite", "starred"),
 }
 
 
@@ -46,6 +46,8 @@ def read_csv(path):
 
         records = []
         for line_number, row in enumerate(reader, start=2):
+            if None in row:
+                raise ValueError(f"Строка {line_number}: количество столбцов не совпадает с заголовками.")
             if not any((value or "").strip() for value in row.values()):
                 continue
 
