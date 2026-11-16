@@ -357,12 +357,13 @@ class LoginWindow(QWidget, Ui_LoginWindowBase):
 
 
 class MainWindow(QMainWindow, Ui_MainWindowBase):
-    def __init__(self, db_manager, crypto_service, master_key_derived=None):
+    def __init__(self, db_manager, crypto_service, master_key_derived=None, master_password_hash=None):
         super().__init__()
         self.setupUi(self)
         self.setWindowTitle("Менеджер паролей")
         self.db_manager = db_manager
         self.crypto_service = crypto_service
+        self.master_password_hash = master_password_hash
 
         if master_key_derived:
             try:
@@ -430,6 +431,33 @@ class MainWindow(QMainWindow, Ui_MainWindowBase):
             return
         if not path.casefold().endswith(".csv"):
             path += ".csv"
+
+        if not self.master_password_hash:
+            QMessageBox.critical(
+                self,
+                "Ошибка проверки",
+                "Не удалось проверить мастер-пароль. Экспорт отменён.",
+            )
+            return
+
+        entered_password, accepted = QInputDialog.getText(
+            self,
+            "Подтверждение владельца",
+            "Проверка безопасности: вы действительно владелец хранилища?\\n"
+            "Введите мастер-пароль для подтверждения экспорта:",
+            QLineEdit.EchoMode.Password,
+        )
+        if not accepted:
+            return
+        if not self.crypto_service.verify_password(
+            entered_password, self.master_password_hash
+        ):
+            QMessageBox.warning(
+                self,
+                "Экспорт отменён",
+                "Неверный мастер-пароль. Экспорт не выполнен.",
+            )
+            return
 
         self.db_manager.connect()
         try:
@@ -787,7 +815,9 @@ if __name__ == "__main__":
     
     def on_login_success(derived_key):
         logger.info("Вход успешен, открываем MainWindow.")
-        app.main_window = MainWindow(db_manager, crypto_service, derived_key)
+        app.main_window = MainWindow(
+            db_manager, crypto_service, derived_key, login_window.master_hash
+        )
         app.main_window.show()
         login_window.close() # Закрываем окно входа после успешного логина
         
