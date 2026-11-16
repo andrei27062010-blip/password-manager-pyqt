@@ -749,7 +749,7 @@ class MainWindow(QMainWindow, Ui_MainWindowBase):
             return
         item = self.passwords_table.item(row, 0)
         record_id = item.data(Qt.ItemDataRole.UserRole)
-        new_favorite = not item.data(Qt.ItemDataRole.UserRole + 4)
+        new_favorite = not item.data(Qt.ItemDataRole.UserRole + 3)
         self.db_manager.connect()
         try:
             updated = self.db_manager.set_favorite(record_id, new_favorite)
