@@ -143,11 +143,18 @@ def save_master_config(master_hash: bytes, key_salt: bytes):
         "master_hash_b64": base64.b64encode(master_hash).decode("utf-8"),
         "key_salt_b64": base64.b64encode(key_salt).decode("utf-8"),
     }
+    temp_path = MASTER_CONFIG_FILE + ".tmp"
     try:
-        with open(MASTER_CONFIG_FILE, "w", encoding="utf-8") as config_file:
+        with open(temp_path, "w", encoding="utf-8") as config_file:
             json.dump(config, config_file)
+        os.replace(temp_path, MASTER_CONFIG_FILE)
         logger.info("Мастер-конфигурация успешно сохранена.")
     except OSError as e:
+        try:
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
+        except OSError:
+            pass
         logger.critical("Не удалось сохранить master_config.json: %s", e)
         raise
 
