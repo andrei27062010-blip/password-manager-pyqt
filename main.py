@@ -32,7 +32,7 @@ from ui.login_window import Ui_Form as Ui_LoginWindowBase
 from ui.main_window import Ui_MainWindow as Ui_MainWindowBase
 from theme import WhiteNightsTheme 
 from database import DatabaseManager
-from crypto import CryptoService
+from crypto import CryptoService\nfrom csv_transfer import read_csv, write_csv
 
 # --- НАСТРОЙКА ЛОГГИРОВАНИЯ ---
 # Создаем папку для логов, если ее нет
@@ -373,7 +373,7 @@ class MainWindow(QMainWindow, Ui_MainWindowBase):
         self.add_button.clicked.connect(self._on_add)
         self.edit_button.clicked.connect(self._on_edit)
         self.delete_button.clicked.connect(self._on_delete)
-        self.copy_password_button.clicked.connect(self._on_copy_password)
+        self.copy_password_button.clicked.connect(self._on_copy_password)\n        self.import_export_button.clicked.connect(self._open_import_export)
         self.add_category_button.clicked.connect(self._on_add_category)
         self.delete_category_button.clicked.connect(self._on_delete_category)
         self.category_list.currentItemChanged.connect(self._refresh_passwords)
@@ -388,6 +388,125 @@ class MainWindow(QMainWindow, Ui_MainWindowBase):
         self.passwords_table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self.passwords_table.setColumnWidth(4, 48)
         self._load_categories()
+
+    def _open_import_export(self):
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Импорт и экспорт")
+        dialog.setMinimumWidth(360)
+        layout = QVBoxLayout(dialog)
+        layout.addWidget(QLabel("Переносите пароли между менеджерами с помощью CSV-файла."))
+        export_button = QPushButton("Экспортировать в CSV")
+        import_button = QPushButton("Импортировать из CSV")
+        close_button = QPushButton("Закрыть")
+        layout.addWidget(export_button)
+        layout.addWidget(import_button)
+        layout.addWidget(close_button)
+        export_button.clicked.connect(self._export_csv)
+        import_button.clicked.connect(self._import_csv)
+        close_button.clicked.connect(dialog.accept)
+        dialog.exec()
+
+    def _export_csv(self):
+        warning = QMessageBox.warning(
+            self,
+            "Экспорт открытых паролей",
+            "CSV-файл будет содержать пароли в открытом виде. Любой человек, "
+            "получивший этот файл, сможет их прочитать. Храните его безопасно "
+            "и удалите после переноса, если он больше не нужен. Продолжить?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if warning != QMessageBox.StandardButton.Yes:
+            return
+
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Экспорт паролей", "passwords.csv", "CSV-файлы (*.csv)"
+        )
+        if not path:
+            return
+
+        self.db_manager.connect()
+        try:
+            records = self.db_manager.get_passwords()
+            categories = dict(self.db_manager.get_categories())
+            export_records = []
+            for record in records:
+                record_id, service, login, encrypted, salt, notes, category_id, favorite = record
+                export_records.append({
+                    "service": service,
+                    "login": login,
+                    "password": self.crypto_service.decrypt_data(encrypted),
+                    "notes": notes or "",
+                    "category": categories.get(category_id, ""),
+                    "is_favorite": bool(favorite),
+                })
+        except Exception as e:
+            logger.error("Ошибка подготовки CSV-экспорта: %s", e, exc_info=True)
+            QMessageBox.critical(self, "Ошибка экспорта", f"Не удалось подготовить данные: {e}")
+            return
+        finally:
+            self.db_manager.close()
+
+        try:
+            write_csv(path, export_records)
+        except (OSError, ValueError) as e:
+            logger.error("Ошибка записи CSV-файла: %s", e, exc_info=True)
+            QMessageBox.critical(self, "Ошибка экспорта", f"Не удалось сохранить CSV-файл: {e}")
+            return
+        QMessageBox.information(
+            self, "Экспорт завершён",
+            f"Экспортировано записей: {len(export_records)}. Не забудьте защитить CSV-файл."
+        )
+
+    def _import_csv(self):
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Импорт паролей", "", "CSV-файлы (*.csv);;Все файлы (*)"
+        )
+        if not path:
+            return
+        try:
+            imported_records = read_csv(path)
+        except (OSError, UnicodeError, ValueError) as e:
+            logger.warning("CSV-файл не прошёл проверку: %s", e)
+            QMessageBox.critical(self, "Ошибка импорта", f"Не удалось прочитать CSV-файл:\n{e}")
+            return
+
+        reply = QMessageBox.question(
+            self, "Подтверждение импорта",
+            f"В файле найдено записей: {len(imported_records)}.\n"
+            "Повторяющиеся пары «сервис + логин» будут пропущены. "
+            "Новые категории будут созданы автоматически. Продолжить?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+
+        try:
+            prepared_records = []
+            for record in imported_records:
+                prepared = dict(record)
+                prepared["encrypted_password"] = self.crypto_service.encrypt_data(record["password"])
+                prepared["salt"] = self.crypto_service.generate_salt()
+                prepared_records.append(prepared)
+
+            self.db_manager.connect()
+            added, skipped = self.db_manager.import_records(prepared_records)
+        except Exception as e:
+            logger.error("Ошибка импорта CSV: %s", e, exc_info=True)
+            QMessageBox.critical(
+                self, "Ошибка импорта",
+                f"Импорт не выполнен. Данные базы данных не были изменены.\n{e}"
+            )
+            return
+        finally:
+            self.db_manager.close()
+
+        self._load_categories()
+        QMessageBox.information(
+            self, "Импорт завершён",
+            f"Добавлено записей: {added}.\nПропущено дубликатов: {skipped}."
+        )
 
     def _database_categories(self):
         self.db_manager.connect()
