@@ -428,6 +428,8 @@ class MainWindow(QMainWindow, Ui_MainWindowBase):
         )
         if not path:
             return
+        if not path.casefold().endswith(".csv"):
+            path += ".csv"
 
         self.db_manager.connect()
         try:
