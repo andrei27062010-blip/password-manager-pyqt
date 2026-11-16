@@ -51,7 +51,11 @@ def read_csv(path):
             if not any((value or "").strip() for value in row.values()):
                 continue
 
-            service = (row.get(columns["service"]) or "").strip()
+            service_value = row.get(columns["service"]) or ""
+            url_column = normalized_headers.get(_normalize_header("url"))
+            if not service_value and url_column:
+                service_value = row.get(url_column) or ""
+            service = service_value.strip()
             login = (row.get(columns["login"]) or "").strip()
             password = row.get(columns["password"]) or ""
             if not service or not login or not password:
