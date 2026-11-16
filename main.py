@@ -19,7 +19,7 @@ from PyQt6.QtWidgets import (
     QLineEdit,
     QPushButton,
     QLabel,
-    QMessageBox,
+    QMessageBox as _QMessageBox,
     QTableWidgetItem,
     QListWidget,
     QListWidgetItem,
@@ -36,6 +36,52 @@ from theme import WhiteNightsTheme
 from database import DatabaseManager
 from crypto import CryptoService
 from csv_transfer import read_csv, write_csv
+
+
+class QMessageBox:
+    """Показывает стандартные сообщения без системного звукового сигнала."""
+
+    StandardButton = _QMessageBox.StandardButton
+
+    @staticmethod
+    def _show(parent, title, text, icon, buttons, default_button):
+        dialog = _QMessageBox(parent)
+        dialog.setWindowTitle(title)
+        dialog.setText(text)
+        dialog.setIcon(_QMessageBox.Icon.NoIcon)
+        dialog.setStandardButtons(buttons)
+        if default_button != _QMessageBox.StandardButton.NoButton:
+            dialog.setDefaultButton(default_button)
+        return dialog.exec()
+
+    @staticmethod
+    def information(parent, title, text, buttons=_QMessageBox.StandardButton.Ok,
+                    defaultButton=_QMessageBox.StandardButton.NoButton):
+        return QMessageBox._show(
+            parent, title, text, _QMessageBox.Icon.Information, buttons, defaultButton
+        )
+
+    @staticmethod
+    def warning(parent, title, text, buttons=_QMessageBox.StandardButton.Ok,
+                defaultButton=_QMessageBox.StandardButton.NoButton):
+        return QMessageBox._show(
+            parent, title, text, _QMessageBox.Icon.Warning, buttons, defaultButton
+        )
+
+    @staticmethod
+    def critical(parent, title, text, buttons=_QMessageBox.StandardButton.Ok,
+                 defaultButton=_QMessageBox.StandardButton.NoButton):
+        return QMessageBox._show(
+            parent, title, text, _QMessageBox.Icon.Critical, buttons, defaultButton
+        )
+
+    @staticmethod
+    def question(parent, title, text, buttons=_QMessageBox.StandardButton.Yes
+                 | _QMessageBox.StandardButton.No,
+                 defaultButton=_QMessageBox.StandardButton.NoButton):
+        return QMessageBox._show(
+            parent, title, text, _QMessageBox.Icon.Question, buttons, defaultButton
+        )
 
 # --- НАСТРОЙКА ЛОГГИРОВАНИЯ ---
 # Создаем папку для логов, если ее нет
