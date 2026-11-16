@@ -229,8 +229,8 @@ class PasswordDialog(QDialog):
         if self.record:
             self.service_input.setText(self.record[1])
             self.login_input.setText(self.record[2])
-            self.notes_input.setText(self.record[5] if self.record[5] else "")
-            category_index = self.category_combo.findData(self.record[6])
+            self.notes_input.setText(self.record[4] if self.record[4] else "")
+            category_index = self.category_combo.findData(self.record[5])
             self.category_combo.setCurrentIndex(max(category_index, 0))
             # При редактировании не показываем пароль, но можем оценить его надежность, если он был изменен
             self._on_password_changed(self.password_input.text())
