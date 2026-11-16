@@ -2,7 +2,7 @@ import csv
 
 
 FIELD_ALIASES = {
-    "service": {"service", "name", "title", "website", "site"},
+    "service": {"service", "name", "title", "website", "site", "url"},
     "login": {"login", "username", "user", "email"},
     "password": {"password", "pass"},
     "notes": {"notes", "note", "comment", "comments"},
