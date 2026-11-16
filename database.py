@@ -283,6 +283,73 @@ class DatabaseManager:
             print(f"Error updating record: {e}")
             return False
 
+
+    def import_records(self, records):
+        """Атомарно импортирует подготовленные записи, пропуская дубликаты."""
+        if not self.conn or not self.cursor:
+            raise sqlite3.Error("No database connection.")
+
+        added = 0
+        skipped = 0
+        try:
+            self.conn.execute("BEGIN")
+            self.cursor.execute("SELECT id, name FROM categories")
+            category_rows = self.cursor.fetchall()
+            category_ids = {
+                self._normalize(name): category_id
+                for category_id, name in category_rows
+            }
+            existing_pairs = set()
+            self.cursor.execute(
+                "SELECT service_normalized, login_normalized FROM passwords"
+            )
+            existing_pairs.update(self.cursor.fetchall())
+
+            for record in records:
+                service = record["service"].strip()
+                login = record["login"].strip()
+                pair = (self._normalize(service), self._normalize(login))
+                if pair in existing_pairs:
+                    skipped += 1
+                    continue
+
+                category_name = (record.get("category") or "").strip()
+                category_id = None
+                if category_name and self._normalize(category_name) not in {
+                    "все", "избранное", "мои категории"
+                }:
+                    normalized_category = self._normalize(category_name)
+                    category_id = category_ids.get(normalized_category)
+                    if category_id is None:
+                        self.cursor.execute(
+                            "INSERT INTO categories (name) VALUES (?)",
+                            (category_name,)
+                        )
+                        category_id = self.cursor.lastrowid
+                        category_ids[normalized_category] = category_id
+
+                self.cursor.execute(
+                    """
+                    INSERT INTO passwords (
+                        service, login, encrypted_password, salt, notes,
+                        service_normalized, login_normalized, category_id, is_favorite
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        service, login, record["encrypted_password"], record["salt"],
+                        record.get("notes", ""), pair[0], pair[1], category_id,
+                        int(bool(record.get("is_favorite", False)))
+                    )
+                )
+                existing_pairs.add(pair)
+                added += 1
+
+            self.conn.commit()
+            return added, skipped
+        except Exception:
+            self.conn.rollback()
+            raise
+
     def set_favorite(self, record_id: int, is_favorite: bool):
         if not self.cursor:
             return False
