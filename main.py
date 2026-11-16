@@ -3,6 +3,7 @@ import csv
 import os
 import json
 import base64
+import binascii
 import secrets
 import string
 import logging # <-- ДОБАВЛЕНО для логирования
@@ -105,30 +106,50 @@ MASTER_CONFIG_FILE = "master_config.json"
 
 
 def load_master_config():
-    if os.path.exists(MASTER_CONFIG_FILE):
-        try:
-            with open(MASTER_CONFIG_FILE, "r") as f:
-                config = json.load(f)
-                return base64.b64decode(config["master_hash_b64"]), base64.b64decode(
-                    config["key_salt_b64"]
-                )
-        except json.JSONDecodeError as e:
-            logger.error(f"Ошибка чтения master_config.json: {e}")
-            return None, None
-    return None, None
+    if not os.path.exists(MASTER_CONFIG_FILE):
+        return None, None
+
+    try:
+        with open(MASTER_CONFIG_FILE, "r", encoding="utf-8") as config_file:
+            config = json.load(config_file)
+
+        if not isinstance(config, dict):
+            raise ValueError("Корневое значение конфигурации должно быть объектом.")
+
+        master_hash_b64 = config.get("master_hash_b64")
+        key_salt_b64 = config.get("key_salt_b64")
+        if not isinstance(master_hash_b64, str) or not isinstance(key_salt_b64, str):
+            raise ValueError("В конфигурации отсутствуют обязательные поля.")
+
+        master_hash = base64.b64decode(master_hash_b64, validate=True)
+        key_salt = base64.b64decode(key_salt_b64, validate=True)
+        if len(master_hash) != 60 or not master_hash.startswith(b"$2"):
+            raise ValueError("Хеш мастер-пароля имеет неверный формат.")
+        if len(key_salt) != 16:
+            raise ValueError("Соль мастер-пароля имеет неверную длину.")
+
+        return master_hash, key_salt
+    except (OSError, UnicodeError, json.JSONDecodeError, binascii.Error, TypeError, ValueError) as e:
+        logger.error("Не удалось загрузить master_config.json: %s", e)
+        raise ValueError(
+            "Файл master_config.json повреждён или недоступен. "
+            "Не удаляйте его и не создавайте новый мастер-пароль: "
+            "это может лишить доступа к существующим записям."
+        ) from e
 
 
 def save_master_config(master_hash: bytes, key_salt: bytes):
+    config = {
+        "master_hash_b64": base64.b64encode(master_hash).decode("utf-8"),
+        "key_salt_b64": base64.b64encode(key_salt).decode("utf-8"),
+    }
     try:
-        config = {
-            "master_hash_b64": base64.b64encode(master_hash).decode("utf-8"),
-            "key_salt_b64": base64.b64encode(key_salt).decode("utf-8"),
-        }
-        with open(MASTER_CONFIG_FILE, "w") as f:
-            json.dump(config, f)
+        with open(MASTER_CONFIG_FILE, "w", encoding="utf-8") as config_file:
+            json.dump(config, config_file)
         logger.info("Мастер-конфигурация успешно сохранена.")
-    except IOError as e:
-        logger.critical(f"КРИТИЧЕСКАЯ ОШИБКА: Не удалось сохранить master_config.json: {e}")
+    except OSError as e:
+        logger.critical("Не удалось сохранить master_config.json: %s", e)
+        raise
 
 
 class PasswordDialog(QDialog):
@@ -329,7 +350,17 @@ class LoginWindow(QWidget, Ui_LoginWindowBase):
         self.master_hash = None
         self.master_key_salt_for_derived_key = None
 
-        self.master_hash, self.master_key_salt_for_derived_key = load_master_config()
+        try:
+            self.master_hash, self.master_key_salt_for_derived_key = load_master_config()
+        except ValueError as e:
+            QMessageBox.critical(
+                self,
+                "Ошибка конфигурации",
+                f"{e}\n\nВосстановите файл конфигурации из резервной копии.",
+            )
+            self.login_button.setEnabled(False)
+            self.password_input.setEnabled(False)
+            return
 
         if not self.master_hash:
             QMessageBox.information(
@@ -357,7 +388,15 @@ class LoginWindow(QWidget, Ui_LoginWindowBase):
         new_key_salt = self.crypto_service.generate_salt()
         new_master_hash = self.crypto_service.hash_password(entered_password)
 
-        save_master_config(new_master_hash, new_key_salt)
+        try:
+            save_master_config(new_master_hash, new_key_salt)
+        except OSError as e:
+            QMessageBox.critical(
+                self,
+                "Ошибка сохранения",
+                f"Не удалось сохранить мастер-пароль. Попробуйте ещё раз.\n{e}",
+            )
+            return
 
         self.master_hash = new_master_hash  # Обновляем после сохранения
         self.master_key_salt_for_derived_key = new_key_salt # Обновляем после сохранения
@@ -374,7 +413,7 @@ class LoginWindow(QWidget, Ui_LoginWindowBase):
 
     def _on_login(self):
         entered_password = self.password_input.text()
-        logger.info(f"Попытка входа. Введен пароль (длина): {len(entered_password)}")
+        logger.info("Попытка входа.")
         if not entered_password:
             QMessageBox.warning(
                 self, "Ошибка входа", "Пожалуйста, введите мастер-пароль."
@@ -514,7 +553,7 @@ class MainWindow(QMainWindow, Ui_MainWindowBase):
             categories = dict(self.db_manager.get_categories())
             export_records = []
             for record in records:
-                record_id, service, login, encrypted, salt, notes, category_id, favorite = record
+                record_id, service, login, encrypted, notes, category_id, favorite = record
                 export_records.append({
                     "service": service,
                     "login": login,
@@ -570,7 +609,6 @@ class MainWindow(QMainWindow, Ui_MainWindowBase):
             for record in imported_records:
                 prepared = dict(record)
                 prepared["encrypted_password"] = self.crypto_service.encrypt_data(record["password"])
-                prepared["salt"] = self.crypto_service.generate_salt()
                 prepared_records.append(prepared)
 
             self.db_manager.connect()
@@ -644,14 +682,13 @@ class MainWindow(QMainWindow, Ui_MainWindowBase):
 
         self.passwords_table.setRowCount(0)
         for row, record in enumerate(records):
-            record_id, service, login, encrypted, salt, notes, category_id, favorite = record
+            record_id, service, login, encrypted, notes, category_id, favorite = record
             self.passwords_table.insertRow(row)
             service_item = QTableWidgetItem(service)
             service_item.setData(Qt.ItemDataRole.UserRole, record_id)
             service_item.setData(Qt.ItemDataRole.UserRole + 1, encrypted)
-            service_item.setData(Qt.ItemDataRole.UserRole + 2, salt)
-            service_item.setData(Qt.ItemDataRole.UserRole + 3, category_id)
-            service_item.setData(Qt.ItemDataRole.UserRole + 4, bool(favorite))
+            service_item.setData(Qt.ItemDataRole.UserRole + 2, category_id)
+            service_item.setData(Qt.ItemDataRole.UserRole + 3, bool(favorite))
             self.passwords_table.setItem(row, 0, service_item)
             self.passwords_table.setItem(row, 1, QTableWidgetItem(login))
             self.passwords_table.setItem(row, 2, QTableWidgetItem("**********"))
@@ -737,9 +774,8 @@ class MainWindow(QMainWindow, Ui_MainWindowBase):
             return
         try:
             encrypted = self.crypto_service.encrypt_data(password)
-            salt = self.crypto_service.generate_salt()
             self.db_manager.connect()
-            added = self.db_manager.add_record(service, login, encrypted, salt, notes, category_id)
+            added = self.db_manager.add_record(service, login, encrypted, notes, category_id)
         except Exception as e:
             logger.error("Ошибка добавления записи: %s", e, exc_info=True)
             QMessageBox.critical(self, "Ошибка", f"Не удалось добавить запись: {e}")
@@ -777,15 +813,14 @@ class MainWindow(QMainWindow, Ui_MainWindowBase):
             QMessageBox.warning(self, "Ошибка", "Сервис и логин обязательны для заполнения.")
             return
 
-        encrypted, salt = record[3], record[4]
+        encrypted = record[3]
         try:
             if password:
                 encrypted = self.crypto_service.encrypt_data(password)
-                salt = self.crypto_service.generate_salt()
             self.db_manager.connect()
             updated = self.db_manager.update_record(
-                record_id, service, login, encrypted, salt, notes,
-                category_id, bool(record[7])
+                record_id, service, login, encrypted, notes,
+                category_id, bool(record[6])
             )
         except Exception as e:
             logger.error("Ошибка обновления записи: %s", e, exc_info=True)
