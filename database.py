@@ -47,79 +47,17 @@ class DatabaseManager:
                     login TEXT NOT NULL,
                     encrypted_password BLOB NOT NULL,
                     notes TEXT,
-                    service_normalized TEXT,
-                    login_normalized TEXT,
+                    service_normalized TEXT NOT NULL,
+                    login_normalized TEXT NOT NULL,
                     category_id INTEGER REFERENCES categories(id) ON DELETE SET NULL,
                     is_favorite INTEGER NOT NULL DEFAULT 0
                 )
             """)
 
-            self.cursor.execute("PRAGMA table_info(passwords)")
-            columns = {row[1] for row in self.cursor.fetchall()}
-            if "service_normalized" not in columns:
-                self.cursor.execute(
-                    "ALTER TABLE passwords ADD COLUMN service_normalized TEXT"
-                )
-            if "login_normalized" not in columns:
-                self.cursor.execute(
-                    "ALTER TABLE passwords ADD COLUMN login_normalized TEXT"
-                )
-            if "category_id" not in columns:
-                self.cursor.execute(
-                    "ALTER TABLE passwords ADD COLUMN category_id INTEGER "
-                    "REFERENCES categories(id) ON DELETE SET NULL"
-                )
-            if "is_favorite" not in columns:
-                self.cursor.execute(
-                    "ALTER TABLE passwords ADD COLUMN is_favorite INTEGER NOT NULL DEFAULT 0"
-                )
-            if "salt" in columns:
-                self.cursor.execute("""
-                    CREATE TABLE passwords_new (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        service TEXT NOT NULL,
-                        login TEXT NOT NULL,
-                        encrypted_password BLOB NOT NULL,
-                        notes TEXT,
-                        service_normalized TEXT,
-                        login_normalized TEXT,
-                        category_id INTEGER REFERENCES categories(id) ON DELETE SET NULL,
-                        is_favorite INTEGER NOT NULL DEFAULT 0
-                    )
-                """)
-                self.cursor.execute("""
-                    INSERT INTO passwords_new (
-                        id, service, login, encrypted_password, notes,
-                        service_normalized, login_normalized, category_id, is_favorite
-                    )
-                    SELECT id, service, login, encrypted_password, notes,
-                           service_normalized, login_normalized, category_id, is_favorite
-                    FROM passwords
-                """)
-                self.cursor.execute("DROP TABLE passwords")
-                self.cursor.execute("ALTER TABLE passwords_new RENAME TO passwords")
-
-            self.cursor.execute("SELECT id, service, login FROM passwords")
-            for record_id, service, login in self.cursor.fetchall():
-                self.cursor.execute(
-                    """
-                    UPDATE passwords
-                    SET service_normalized = ?, login_normalized = ?
-                    WHERE id = ?
-                    """,
-                    (self._normalize(service), self._normalize(login), record_id)
-                )
-
-            try:
-                self.cursor.execute("""
-                    CREATE UNIQUE INDEX IF NOT EXISTS idx_passwords_service_login
-                    ON passwords(service_normalized, login_normalized)
-                """)
-            except sqlite3.IntegrityError:
-                print(
-                    "Duplicate service/login pairs already exist. "
-                    "The application will prevent adding new duplicates."
-                )
+            self.cursor.execute("""
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_passwords_service_login
+                ON passwords(service_normalized, login_normalized)
+            """)
 
             self.conn.commit()
         except sqlite3.Error as e:
