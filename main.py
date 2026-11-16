@@ -357,7 +357,10 @@ class LoginWindow(QWidget, Ui_LoginWindowBase):
 
 
 class MainWindow(QMainWindow, Ui_MainWindowBase):
-    def __init__(self, db_manager, crypto_service, master_key_derived=None, master_password_hash=None):
+    def __init__(
+        self, db_manager, crypto_service, master_key_derived=None,
+        master_password_hash=None
+    ):
         super().__init__()
         self.setupUi(self)
         self.setWindowTitle("Менеджер паролей")
@@ -443,7 +446,7 @@ class MainWindow(QMainWindow, Ui_MainWindowBase):
         entered_password, accepted = QInputDialog.getText(
             self,
             "Подтверждение владельца",
-            "Проверка безопасности: вы действительно владелец хранилища?\\n"
+            "Проверка безопасности: вы действительно владелец хранилища?\n"
             "Введите мастер-пароль для подтверждения экспорта:",
             QLineEdit.EchoMode.Password,
         )
