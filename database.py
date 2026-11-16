@@ -46,7 +46,6 @@ class DatabaseManager:
                     service TEXT NOT NULL,
                     login TEXT NOT NULL,
                     encrypted_password BLOB NOT NULL,
-                    salt BLOB NOT NULL,
                     notes TEXT,
                     service_normalized TEXT,
                     login_normalized TEXT,
@@ -74,6 +73,8 @@ class DatabaseManager:
                 self.cursor.execute(
                     "ALTER TABLE passwords ADD COLUMN is_favorite INTEGER NOT NULL DEFAULT 0"
                 )
+            if "salt" in columns:
+                self.cursor.execute("ALTER TABLE passwords DROP COLUMN salt")
 
             self.cursor.execute("SELECT id, service, login FROM passwords")
             for record_id, service, login in self.cursor.fetchall():
@@ -176,7 +177,7 @@ class DatabaseManager:
         if not self.cursor:
             return []
         query = """
-            SELECT id, service, login, encrypted_password, salt, notes,
+            SELECT id, service, login, encrypted_password, notes,
                    category_id, is_favorite
             FROM passwords
             WHERE 1 = 1
@@ -212,7 +213,7 @@ class DatabaseManager:
         try:
             self.cursor.execute(
                 """
-                SELECT id, service, login, encrypted_password, salt, notes,
+                SELECT id, service, login, encrypted_password, notes,
                        category_id, is_favorite
                 FROM passwords WHERE id = ?
                 """,
@@ -225,7 +226,7 @@ class DatabaseManager:
 
     def add_record(
         self, service: str, login: str, encrypted_password: bytes,
-        salt: bytes, notes: str, category_id=None, is_favorite=False
+        notes: str, category_id=None, is_favorite=False
     ):
         if not self.cursor:
             return False
@@ -235,12 +236,12 @@ class DatabaseManager:
             self.cursor.execute(
                 """
                 INSERT INTO passwords (
-                    service, login, encrypted_password, salt, notes,
+                    service, login, encrypted_password, notes,
                     service_normalized, login_normalized, category_id, is_favorite
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
-                    service, login, encrypted_password, salt, notes,
+                    service, login, encrypted_password, notes,
                     self._normalize(service), self._normalize(login),
                     category_id, int(bool(is_favorite))
                 )
@@ -254,7 +255,7 @@ class DatabaseManager:
 
     def update_record(
         self, record_id: int, service: str, login: str,
-        encrypted_password: bytes, salt: bytes, notes: str,
+        encrypted_password: bytes, notes: str,
         category_id=None, is_favorite=False
     ):
         if not self.cursor:
@@ -265,13 +266,13 @@ class DatabaseManager:
             self.cursor.execute(
                 """
                 UPDATE passwords
-                SET service = ?, login = ?, encrypted_password = ?, salt = ?,
+                SET service = ?, login = ?, encrypted_password = ?,
                     notes = ?, service_normalized = ?, login_normalized = ?,
                     category_id = ?, is_favorite = ?
                 WHERE id = ?
                 """,
                 (
-                    service, login, encrypted_password, salt, notes,
+                    service, login, encrypted_password, notes,
                     self._normalize(service), self._normalize(login),
                     category_id, int(bool(is_favorite)), record_id
                 )
@@ -331,12 +332,12 @@ class DatabaseManager:
                 self.cursor.execute(
                     """
                     INSERT INTO passwords (
-                        service, login, encrypted_password, salt, notes,
+                        service, login, encrypted_password, notes,
                         service_normalized, login_normalized, category_id, is_favorite
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
-                        service, login, record["encrypted_password"], record["salt"],
+                        service, login, record["encrypted_password"],
                         record.get("notes", ""), pair[0], pair[1], category_id,
                         int(bool(record.get("is_favorite", False)))
                     )
