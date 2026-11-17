@@ -29,7 +29,7 @@ from PyQt6.QtWidgets import (
     QFileDialog,
 )
 from PyQt6.QtCore import pyqtSignal, Qt
-from PyQt6.QtGui import QClipboard
+from PyQt6.QtGui import QClipboard, QKeySequence, QShortcut
 
 from ui.login_window import Ui_Form as Ui_LoginWindowBase
 from ui.main_window import Ui_MainWindow as Ui_MainWindowBase
@@ -229,6 +229,18 @@ class PasswordDialog(QDialog):
         main_layout.addLayout(button_layout)
         self.setLayout(main_layout)
 
+        self.save_button.setDefault(True)
+        self.save_button.setAutoDefault(True)
+        self.cancel_button.setAutoDefault(False)
+        self.toggle_password_button.setAutoDefault(False)
+        self.generate_password_button.setAutoDefault(False)
+        self.save_shortcut = QShortcut(QKeySequence(Qt.Key.Key_Return), self)
+        self.save_shortcut.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
+        self.save_shortcut.activated.connect(self.save_button.click)
+        self.enter_shortcut = QShortcut(QKeySequence(Qt.Key.Key_Enter), self)
+        self.enter_shortcut.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
+        self.enter_shortcut.activated.connect(self.save_button.click)
+
         self.save_button.clicked.connect(self.accept)
         self.cancel_button.clicked.connect(self.reject)
         self.generate_password_button.clicked.connect(self._on_generate_password)
@@ -356,6 +368,9 @@ class LoginWindow(QWidget, Ui_LoginWindowBase):
 
         self.master_hash = None
         self.master_key_salt_for_derived_key = None
+        self.login_button.setDefault(True)
+        self.login_button.setAutoDefault(True)
+        self.password_input.returnPressed.connect(self.login_button.click)
 
         try:
             self.master_hash, self.master_key_salt_for_derived_key = load_master_config()
@@ -405,18 +420,10 @@ class LoginWindow(QWidget, Ui_LoginWindowBase):
             )
             return
 
-        self.master_hash = new_master_hash  # Обновляем после сохранения
-        self.master_key_salt_for_derived_key = new_key_salt # Обновляем после сохранения
-
-        QMessageBox.information(
-            self, "Успех", "Мастер-пароль успешно установлен! Теперь войдите."
-        )
-        logger.info("Мастер-пароль успешно установлен.")
-        self.password_input.clear()
-        self.password_input.setPlaceholderText("Введите мастер-пароль")
-        self.login_button.setText("Войти")
-        self.login_button.clicked.disconnect(self._on_set_master_password)
-        self.login_button.clicked.connect(self._on_login)
+        self.master_hash = new_master_hash
+        self.master_key_salt_for_derived_key = new_key_salt
+        logger.info("Мастер-пароль успешно установлен. Выполняется автоматический вход.")
+        self._on_login()
 
     def _on_login(self):
         entered_password = self.password_input.text()

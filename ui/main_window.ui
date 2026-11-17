@@ -3,7 +3,7 @@
  <class>MainWindow</class>
  <widget class="QMainWindow" name="MainWindow">
   <property name="geometry">
-   <rect><x>0</x><y>0</y><width>900</width><height>540</height></rect>
+   <rect><x>0</x><y>0</y><width>1100</width><height>540</height></rect>
   </property>
   <property name="windowTitle"><string>Менеджер паролей</string></property>
   <widget class="QWidget" name="centralwidget">

@@ -7,7 +7,7 @@ from PyQt6 import QtCore, QtWidgets
 class Ui_MainWindow(object):
     def setupUi(self, MainWindow):
         MainWindow.setObjectName("MainWindow")
-        MainWindow.resize(900, 540)
+        MainWindow.resize(1100, 540)
         self.centralwidget = QtWidgets.QWidget(parent=MainWindow)
         self.main_layout = QtWidgets.QHBoxLayout(self.centralwidget)
 
