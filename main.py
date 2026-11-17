@@ -50,6 +50,12 @@ class QMessageBox:
         dialog.setText(text)
         dialog.setIcon(_QMessageBox.Icon.NoIcon)
         dialog.setStandardButtons(buttons)
+        yes_button = dialog.button(_QMessageBox.StandardButton.Yes)
+        no_button = dialog.button(_QMessageBox.StandardButton.No)
+        if yes_button is not None:
+            yes_button.setText("Да")
+        if no_button is not None:
+            no_button.setText("Нет")
         if default_button != _QMessageBox.StandardButton.NoButton:
             dialog.setDefaultButton(default_button)
         return dialog.exec()
