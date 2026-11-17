@@ -6,7 +6,7 @@ import base64
 import binascii
 import secrets
 import string
-import logging # <-- ДОБАВЛЕНО для логирования
+import logging
 
 from PyQt6.QtWidgets import (
     QApplication,
@@ -29,15 +29,14 @@ from PyQt6.QtWidgets import (
     QFileDialog,
 )
 from PyQt6.QtCore import pyqtSignal, Qt
-from PyQt6.QtGui import QClipboard, QKeySequence, QShortcut
+from PyQt6.QtGui import QKeySequence, QShortcut
 
 from ui.login_window import Ui_Form as Ui_LoginWindowBase
 from ui.main_window import Ui_MainWindow as Ui_MainWindowBase
-from theme import WhiteNightsTheme 
+from theme import WhiteNightsTheme
 from database import DatabaseManager
 from crypto import CryptoService
 from csv_transfer import read_csv, write_csv
-
 
 class QMessageBox:
     """Показывает стандартные сообщения без системного звукового сигнала."""
@@ -84,24 +83,21 @@ class QMessageBox:
             parent, title, text, _QMessageBox.Icon.Question, buttons, defaultButton
         )
 
-# --- НАСТРОЙКА ЛОГГИРОВАНИЯ ---
-# Создаем папку для логов, если ее нет
+
 LOG_DIR = "logs"
 if not os.path.exists(LOG_DIR):
     os.makedirs(LOG_DIR)
 
 LOG_FILE = os.path.join(LOG_DIR, "password_manager.log")
 logging.basicConfig(
-    level=logging.INFO, # Уровень логирования: INFO (информация), DEBUG (отладка), WARNING (предупреждения), ERROR (ошибки), CRITICAL (критические ошибки)
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     handlers=[
-        logging.FileHandler(LOG_FILE, encoding='utf-8'), # Логирование в файл
-        logging.StreamHandler(sys.stdout) # Логирование в консоль
+        logging.FileHandler(LOG_FILE, encoding="utf-8"),
+        logging.StreamHandler(sys.stdout),
     ]
 )
 logger = logging.getLogger(__name__)
-# --- КОНЕЦ НАСТРОЙКИ ЛОГГИРОВАНИЯ ---
-
 MASTER_CONFIG_FILE = "master_config.json"
 
 
@@ -164,8 +160,6 @@ class PasswordDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle("Добавить/Редактировать запись")
         self.setGeometry(200, 200, 450, 360)
-        
-
 
         self.record = record
 
@@ -181,7 +175,7 @@ class PasswordDialog(QDialog):
         self.login_input.setPlaceholderText("Имя пользователя или email")
         main_layout.addWidget(self.login_input)
 
-        # --- ГРУППА ДЛЯ ПОЛЯ ПАРОЛЯ, КНОПКИ ГЕНЕРАЦИИ И ОЦЕНКИ ---
+        # Поле пароля и дополнительные действия.
         password_group_layout = QHBoxLayout()
         
         password_label = QLabel("Пароль:")
@@ -204,7 +198,7 @@ class PasswordDialog(QDialog):
         
         main_layout.addLayout(password_group_layout)
 
-        self.password_strength_label = QLabel("Надежность:") # <-- МЕТКА ДЛЯ ОЦЕНКИ НАДЕЖНОСТИ
+        self.password_strength_label = QLabel("Надежность:")
         self.password_strength_label.setStyleSheet("font-weight: bold;")
         main_layout.addWidget(self.password_strength_label)
 
@@ -251,7 +245,7 @@ class PasswordDialog(QDialog):
             self.notes_input.setText(self.record[4] if self.record[4] else "")
             category_index = self.category_combo.findData(self.record[5])
             self.category_combo.setCurrentIndex(max(category_index, 0))
-            # При редактировании не показываем пароль, но можем оценить его надежность, если он был изменен
+            # При редактировании пароль остаётся скрытым.
             self._on_password_changed(self.password_input.text())
 
 
@@ -298,7 +292,7 @@ class PasswordDialog(QDialog):
         strength_score = 0
         feedback = []
 
-        # 1. Длина
+        # Оцениваем длину пароля.
         length = len(password)
         if length >= 16:
             strength_score += 4
@@ -312,7 +306,7 @@ class PasswordDialog(QDialog):
         else:
             feedback.append("Слишком короткий (< 8 символов)")
 
-        # 2. Разнообразие символов
+        # Учитываем разнообразие символов.
         has_upper = any(c.isupper() for c in password)
         has_lower = any(c.islower() for c in password)
         has_digit = any(c.isdigit() for c in password)
@@ -332,7 +326,7 @@ class PasswordDialog(QDialog):
         else:
             feedback.append("Мало разнообразия")
 
-        # --- Определение уровня надежности ---
+        # Определяем общий уровень надёжности.
         if length == 0:
             strength_text = "Надежность:"
             color = "gray"
@@ -909,7 +903,7 @@ if __name__ == "__main__":
 
     login_window = LoginWindow(db_manager, crypto_service)
     
-    app.main_window = None # Сохраняем ссылку на главное окно, чтобы сборщик мусора не удалил его
+    app.main_window = None
     
     def on_login_success(derived_key):
         logger.info("Вход успешен, открываем MainWindow.")
@@ -917,7 +911,7 @@ if __name__ == "__main__":
             db_manager, crypto_service, derived_key, login_window.master_hash
         )
         app.main_window.show()
-        login_window.close() # Закрываем окно входа после успешного логина
+        login_window.close()
         
     login_window.login_successful.connect(on_login_success)
 

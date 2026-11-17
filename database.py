@@ -29,7 +29,7 @@ class DatabaseManager:
         return value.strip().casefold()
 
     def create_table(self):
-        if not self.cursor:
+        if self.cursor is None:
             print("No database connection. Cannot create tables.")
             return
 
@@ -87,13 +87,16 @@ class DatabaseManager:
         if not self.cursor:
             return None
         normalized_name = name.strip()
-        if not normalized_name or self._normalize(normalized_name) in {"все", "избранное", "мои категории"}:
+        reserved_names = {"все", "избранное", "мои категории"}
+        if not normalized_name or self._normalize(normalized_name) in reserved_names:
             return None
         try:
             self.cursor.execute("SELECT name FROM categories")
             existing_names = [row[0] for row in self.cursor.fetchall()]
-            if any(self._normalize(existing) == self._normalize(normalized_name)
-                   for existing in existing_names):
+            if any(
+                self._normalize(existing) == self._normalize(normalized_name)
+                for existing in existing_names
+            ):
                 return None
             self.cursor.execute(
                 "INSERT INTO categories (name) VALUES (?)", (normalized_name,)
@@ -110,7 +113,9 @@ class DatabaseManager:
         if not self.cursor:
             return []
         try:
-            self.cursor.execute("SELECT id, name FROM categories ORDER BY name COLLATE NOCASE")
+            self.cursor.execute(
+                "SELECT id, name FROM categories ORDER BY name COLLATE NOCASE"
+            )
             return self.cursor.fetchall()
         except sqlite3.Error as e:
             print(f"Error getting categories: {e}")
@@ -133,7 +138,9 @@ class DatabaseManager:
             print(f"Error deleting category: {e}")
             return False
 
-    def get_passwords(self, category_id=None, favorites_only=False, search_text=""):
+    def get_passwords(
+        self, category_id=None, favorites_only=False, search_text=""
+    ):
         """Возвращает записи с учётом выбранной категории и поискового запроса."""
         if not self.cursor:
             return []

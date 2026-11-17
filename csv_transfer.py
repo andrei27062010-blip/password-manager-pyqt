@@ -12,8 +12,9 @@ FIELD_ALIASES = {
 
 
 def _normalize_header(value):
-    return "".join(char for char in (value or "").strip().casefold()
-                   if char.isalnum())
+    return "".join(
+        char for char in (value or "").strip().casefold() if char.isalnum()
+    )
 
 
 def read_csv(path):
@@ -34,11 +35,16 @@ def read_csv(path):
                     columns[field] = original
                     break
 
-        missing = [field for field in ("service", "login", "password")
-                   if field not in columns]
+        missing = [
+            field for field in ("service", "login", "password")
+            if field not in columns
+        ]
         if missing:
-            names = {"service": "сервис или name", "login": "логин или username",
-                     "password": "password"}
+            names = {
+                "service": "сервис или name",
+                "login": "логин или username",
+                "password": "password",
+            }
             raise ValueError(
                 "Не найдены обязательные столбцы: "
                 + ", ".join(names[field] for field in missing)
@@ -47,7 +53,10 @@ def read_csv(path):
         records = []
         for line_number, row in enumerate(reader, start=2):
             if None in row:
-                raise ValueError(f"Строка {line_number}: количество столбцов не совпадает с заголовками.")
+                raise ValueError(
+                    f"Строка {line_number}: количество столбцов "
+                    "не совпадает с заголовками."
+                )
             if not any((value or "").strip() for value in row.values()):
                 continue
 
@@ -63,7 +72,9 @@ def read_csv(path):
                     f"Строка {line_number}: сервис, логин и пароль должны быть заполнены."
                 )
 
-            favorite_value = (row.get(columns.get("is_favorite", "")) or "").strip().casefold()
+            favorite_value = (
+                row.get(columns.get("is_favorite", "")) or ""
+            ).strip().casefold()
             records.append({
                 "service": service,
                 "login": login,
@@ -80,8 +91,10 @@ def read_csv(path):
 
 def write_csv(path, records):
     """Сохраняет записи в формате, совместимом с Google CSV и расширенном полями."""
-    fieldnames = ["name", "url", "username", "password", "note",
-                  "category", "is_favorite"]
+    fieldnames = [
+        "name", "url", "username", "password", "note",
+        "category", "is_favorite",
+    ]
     with open(path, "w", encoding="utf-8-sig", newline="") as csv_file:
         writer = csv.DictWriter(csv_file, fieldnames=fieldnames)
         writer.writeheader()
