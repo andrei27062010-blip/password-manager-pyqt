@@ -1,0 +1,52 @@
+name: Сборка Windows
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: Получение исходного кода
+        uses: actions/checkout@v4
+
+      - name: Установка Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Установка зависимостей
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt pyinstaller
+
+      - name: Сборка приложения
+        run: python -m PyInstaller --noconfirm --clean --windowed --name PasswordManager main.py
+
+      - name: Подготовка каталога программы
+        shell: pwsh
+        run: |
+          if (Test-Path "PasswordManager") {
+            Remove-Item "PasswordManager" -Recurse -Force
+          }
+          Copy-Item -Path "dist/PasswordManager" -Destination "PasswordManager" -Recurse
+          $oversized = Get-ChildItem "PasswordManager" -Recurse -File | Where-Object { $_.Length -ge 100MB }
+          if ($oversized) {
+            $oversized | ForEach-Object { Write-Error "Файл превышает лимит GitHub: $($_.FullName)" }
+            exit 1
+          }
+
+      - name: Сохранение сборки в репозитории
+        shell: pwsh
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -f PasswordManager
+          git diff --cached --quiet
+          if ($LASTEXITCODE -ne 0) {
+            git commit -m "Сборка Windows-версии приложения"
+            git push origin HEAD:main
+          }

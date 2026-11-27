@@ -37,6 +37,7 @@ from theme import WhiteNightsTheme
 from database import DatabaseManager
 from crypto import CryptoService
 from csv_transfer import read_csv, write_csv
+from app_paths import get_data_directory
 
 class QMessageBox:
     """Показывает стандартные сообщения без системного звукового сигнала."""
@@ -90,9 +91,9 @@ class QMessageBox:
         )
 
 
-LOG_DIR = "logs"
-if not os.path.exists(LOG_DIR):
-    os.makedirs(LOG_DIR)
+DATA_DIR = get_data_directory()
+LOG_DIR = os.path.join(os.fspath(DATA_DIR), "logs")
+os.makedirs(LOG_DIR, exist_ok=True)
 
 LOG_FILE = os.path.join(LOG_DIR, "password_manager.log")
 logging.basicConfig(
@@ -104,7 +105,7 @@ logging.basicConfig(
     ]
 )
 logger = logging.getLogger(__name__)
-MASTER_CONFIG_FILE = "master_config.json"
+MASTER_CONFIG_FILE = os.path.join(os.fspath(DATA_DIR), "master_config.json")
 
 
 def load_master_config():
@@ -898,7 +899,7 @@ if __name__ == "__main__":
     app = QApplication(sys.argv)
     app.setStyleSheet(WhiteNightsTheme.get_stylesheet())
     
-    db_manager = DatabaseManager()
+    db_manager = DatabaseManager(os.path.join(os.fspath(DATA_DIR), "passwords.db"))
     crypto_service = CryptoService()
 
     db_manager.connect()

@@ -19,3 +19,7 @@ lib/
 .vscode/
 
 master_config.json
+
+# Результаты сборки Windows
+/build/
+/dist/
